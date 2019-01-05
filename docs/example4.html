@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>jsRK4 Example 4</title>
+<link rel="stylesheet" type="text/css" href="html5.css"></link>
+<script type="text/javascript" src="supports_canvas.js"></script>
+<script type="text/javascript" src="rk4solver.js"></script>
+<script type="text/javascript" src="system_mass_spring_damper.js"></script>
+<script type="text/javascript" src="canvas_graph.js"></script>
+<script type="text/javascript">
+
+// Ideal mass-spring-damper system characteristics
+
+var spring_rad = 10;   // Spring radius (pixels)
+var spring_len = 100;  // Spring length (pixels)
+var mass_hsize = 90;   // mass horizontal size (pixels)
+var mass_vsize = 40;   // mass vertical size (pixels)
+var sys_msd    = new system_mass_spring_damper(4.0,1.0,0.5,spring_len,true);
+
+// Runge-Kutta 4th order solver properties
+
+var tmax = 50.0        // maximum simulation time (sec)
+var tinc = 1.0/100.0;  // integration step size (sec)
+var rk4  = new rk4solver(tinc,sys_msd.n);
+
+var canvas1 = null;  // canvas for spring motion animation
+var ctx1    = null;  // context of canvas1
+var xMin1;           // figure x-axis minimum
+var xMax1;           // figure x-axis maximum
+var yMin1;           // figure y-axis minimum
+var yMax1;           // figure y-axis maximum
+var imgData1;        // spring animation bounding box image data from canvas1 context
+var imgXpos1;        // spring animation bounding box image x position
+var imgYpos1;        // spring animation bounding box image y position
+var imgHdim1;        // spring animation bounding box image horizontal dimension (width)
+var imgVdim1;        // spring animation bounding box image vertical dimension (height)
+
+var canvas2   = null;  // canvas for dynamic response plot
+var graph     = null;  // graph for plotting dynamic response
+
+var intrvl1   = "";  // setInterval for drawCanvas1
+var intrvl2   = "";  // setInterval for drawCanvas2
+var intrvlSim = "";  // setInterval for dynamicSim
+var plot_done = 0;   // dynamic solution plotting done flag
+
+function depvarLabel(i) {
+    // returns ith state vector element plot label
+    return (i == 1) ? "displacement (x) " : "velocity (v) "; 
+};
+function depvarColor(i) {
+    // returns ith state vector element plot color
+    return (i == 1) ? '#0000FF' : '#FF0000'; 
+};
+
+function drawSpring(ctx,w,h,n,d,r,size,color) {
+    hbot = h + d;
+    // calculate distances between spring coils.
+    ntimes2  = n*2;
+    ydel     = size/ntimes2;
+    ydelhalf = ydel/2.0;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(w,h);     // fixed attachment point
+    ctx.lineTo(w,hbot);  // bottom of spring
+    var y = hbot + ydelhalf;
+    for (var i = 0; i < ntimes2; i++) {
+        ctx.lineTo(w+r*Math.cos(i*Math.PI),y);  // spring coil
+        y = y + ydel;
+    };
+    y = y - ydelhalf;
+    ctx.lineTo(w,y);  // top of spring
+    y = y + d;
+    ctx.lineTo(w,y);  // mass attachment point
+    ctx.stroke();
+    ctx.save(); 
+    ctx.fillStyle = '#0000FF';
+    ctx.beginPath();
+    ctx.arc(w, y-d, 2, 0.0, 2*Math.PI, true); // reference point
+    ctx.fill();
+    ctx.restore();
+    ctx.restore();
+    return y;
+};
+
+function drawDamper(ctx,w,h,d,r,size,color,fill) {
+    diam = 2*r;
+    wbot = w - r;
+    hbot = h + d;
+    htop = hbot + size;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(w,h);      // fixed attachment point
+    ctx.lineTo(w,hbot);   // bottom of damper
+    ctx.stroke();
+    ctx.fillStyle = fill;
+    ctx.fillRect(wbot,hbot,diam,size);
+    ctx.strokeRect(wbot,hbot,diam,size);
+    ctx.beginPath();
+    ctx.moveTo(w,htop);    // top of damper
+    ctx.lineTo(w,htop+d);  // mass attachment point
+    ctx.stroke();
+    ctx.restore();
+};
+
+function drawMass(ctx,wref,href,wlen,hlen,color,fill) {
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle   = fill;
+    ctx.fillRect(wref,href,wlen,hlen);
+    ctx.strokeRect(wref,href,wlen,hlen);
+    ctx.restore();
+};
+
+function drawMassSpringDamper(ctx, S, wZero, d, r, color) { 
+    var n    = 5;                  // number of spring coils
+    var size = spring_len + S[1];  // current spring size
+    ctx.lineWidth = 2;
+    wref = wZero;
+    y    = drawSpring(ctx,wref,0,n,d,r,size,color);
+    wref = wZero + 5*r;
+    drawDamper(ctx,wref,0,d,r,size,color,'#F0F0F0');
+    wref = wZero - 2*r;
+    href = y;
+    wlen = mass_hsize;
+    hlen = mass_vsize;
+    drawMass(ctx,wref,href,wlen,hlen,color,'#101010');
+};
+
+function drawStates(ctx,S,wloc,hloc,wlen,hlen) {
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign    = 'start';
+    ctx.clearRect(wloc, hloc, wlen, hlen);
+    ctx.fillStyle="#000000";
+    ctx.fillText("t = " + Math.round(S[0]*100)/100.0, wloc, hloc);
+    ctx.fillStyle=depvarColor(1);
+    ctx.fillText("x = " + Math.round(S[1]*100)/100.0, wloc, hloc+10);
+    ctx.fillStyle=depvarColor(2);
+    ctx.fillText("v = " + Math.round(S[2]*100)/100.0, wloc, hloc+20);
+    ctx.restore();
+};
+
+function drawCanvas1() {
+    if (plot_done == 1) {
+        if ( intrvl1 != "" ) {
+            clearInterval(intrvl1);
+            intrvl1 = "";
+        };
+        return;
+    };
+    ctx1   = canvas1.getContext('2d');
+    width  = canvas1.width;
+    height = canvas1.height;
+    wZero  = Math.round(width/2);
+    // place saved image inside bounding box for spring animation area
+    ctx1.putImageData(imgData1,imgXpos1,imgYpos1);
+    // draw mass-spring-damper system for current state
+    drawMassSpringDamper(ctx1, sys_msd.S, wZero, spring_rad, spring_rad, '#FF0000');
+    // draw current state values
+    wloc = width  - 60;
+    hloc = height - 40;
+    drawStates(ctx1,sys_msd.S,wloc,hloc,width-wloc,height-hloc);
+};
+
+function labelYaxis(ctx,wmin,wmax,href,yMin,yMax,ySfac,ydel) {
+    hmin = href + yMin*ySfac;
+    hmax = href + yMax*ySfac;
+    ctx.save();
+    ctx.strokeStyle  = '#00FF00';
+    ctx.fillStyle    = '#000000';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign    = 'end';
+    var y = yMin;
+    while (y <= yMax) {
+        h = Math.round((y-yMin)*ySfac) + hmin;
+        ctx.beginPath();
+        ctx.moveTo(wmin, h);
+        ctx.lineTo(wmax, h);
+        ctx.stroke();
+        ytext = (y > 0.0) ? "+" + y.toString() : y.toString();
+        ctx.fillText(ytext, wmin-8, h);
+        y = y + ydel;
+    };
+    ctx.restore();
+};
+
+function initCanvas1() {
+    // get canvas context, dimensions and clear
+    ctx1    = canvas1.getContext('2d');
+    width   = canvas1.width;
+    height  = canvas1.height;
+    ctx1.clearRect(0, 0, width, height);
+    // set right-to-left (x) and bottom-to-top (y) limits
+    xMin1 =   0.0;
+    xMax1 = width;
+    yMin1 =   0.0;
+    yMax1 = 300.0;
+    // display ideal mass-spring-damper system properties
+    wloc = 5;
+    hloc = height - 60;
+    ctx1.save();
+    ctx1.textBaseline = 'top';
+    ctx1.textAlign    = 'start'
+    ctx1.fillText("Mass (m)",                                wloc,     hloc   );
+    ctx1.fillText(": " + Math.round(sys_msd.m*100)/100.0,    wloc+110, hloc   );
+    ctx1.fillText("Spring constant (k)",                     wloc,     hloc+10);
+    ctx1.fillText(": " + Math.round(sys_msd.k*100)/100.0,    wloc+110, hloc+10);
+    ctx1.fillText("Damping coefficent (c)",                  wloc,     hloc+20);
+    ctx1.fillText(": " + Math.round(sys_msd.c*100)/100.0,    wloc+110, hloc+20);
+    ctx1.fillText("Initial displacement (x)",                wloc,     hloc+30);
+    ctx1.fillText(": " + Math.round(sys_msd.S[1]*100)/100.0, wloc+110, hloc+30);
+    ctx1.fillText("Initial velocity (v)",                    wloc,     hloc+40);
+    ctx1.fillText(": " + Math.round(sys_msd.S[2]*100)/100.0, wloc+110, hloc+40);
+    ctx1.restore();
+    // define position and dimensions of bounding box for spring animation area
+    wZero    = Math.round(width/2);
+    r        = spring_rad;
+    imgXpos1 = wZero - 3*r;
+    imgYpos1 = 0;
+    imgHdim1 = mass_hsize + 2*r;
+    imgVdim1 = height;
+    // label y-axis distance tic marks
+    wmin  = imgXpos1;
+    wmax  = imgXpos1 + imgHdim1;
+    hmin  = 0;
+    hmax  = height;
+    d     = spring_rad;             // distance to fixed attachment point
+    href  = hmin + d + spring_len;  // vertical movement reference point
+    ysfac = (hmax-hmin)/(yMax1-yMin1);
+    labelYaxis(ctx1,wmin,wmax,href,-100.0,100.0,ysfac,10.0);
+    // draw steady-state solution line
+    ctx1.lineWidth   = 2;
+    ctx1.strokeStyle = '#FF00FF';
+    ctx1.beginPath();
+    ctx1.moveTo(wmin,href+sys_msd.xSS);
+    ctx1.lineTo(wmax,href+sys_msd.xSS);
+    ctx1.stroke();
+    // draw unstretched spring reference line
+    ctx1.lineWidth   = 1;
+    ctx1.strokeStyle = '#000000';
+    ctx1.fillStyle   = '#000000';
+    ctx1.beginPath();
+    ctx1.moveTo(wmin,href);
+    ctx1.lineTo(wmax,href);
+    ctx1.stroke();
+    wref = wmax + 10;
+    // label unstretched spring reference line
+    ctx1.fillText("+ x < 0", wref, href-17);
+    ctx1.fillText("|",       wref, href-7);
+    ctx1.fillText("+ x = 0", wref, href+3);
+    ctx1.fillText("|",       wref, href+13);
+    ctx1.fillText("+ x > 0", wref, href+23);
+    // save image inside the bounding box for spring animation area
+    imgData1 = ctx1.getImageData(imgXpos1,imgYpos1,imgHdim1,imgVdim1);
+    // start drawing mass-spring-damper movement
+    drawCanvas1();
+};
+
+function drawCanvas2() {
+    if (plot_done == 1) {
+        if ( intrvl2 != "" ) {
+            clearInterval(intrvl2);
+            intrvl2 = "";
+        };
+        return;
+    };
+    if ( graph != null ) {
+        t = sys_msd.S[0];
+        x = sys_msd.S[1];
+        graph.drawXYdot(0,depvarColor(1),depvarColor(1), t, x, 1);
+        v = sys_msd.S[2];
+        graph.drawXYdot(0,depvarColor(2),depvarColor(2), t, v, 1);
+        // draw current state values
+        wloc = graph.wmax - 60;
+        hloc = graph.hmax - 50;
+        drawStates(graph.ctx,sys_msd.S,wloc,hloc,56,30);
+    };
+};
+
+function drawGraph() {
+    if ( graph == null ) {
+        return;
+    }
+    var h, w, x, tdx, tdy, ntx, nty;
+    // Clear graph canvas
+    graph.ctx.clearRect(0, 0, graph.width, graph.height);
+    // Set graph canvas and data limits
+    graph.setWHLimits(40, 380,  20, 260);
+    graph.setXYLimits(0.0, tmax, -75.0,  75.0);
+    // Set x-axis tick mark intervals and number
+    if ( graph.xmax > 40.0 ) {
+       tdx = 10.0;
+    } else if ( graph.xmax > 10.0 ) {
+       tdx = 5.0;
+    } else {
+       tdx = 1.0;
+    };
+    ntx = Math.floor((graph.xmax - graph.xmin + tdx/2.0)/tdx) + 1;
+    ntx = Math.max(1,ntx);
+    // Set y-axis tick mark intervals and number
+    tdy = 25.0;
+    nty = Math.floor((graph.ymax - graph.ymin + tdy/2.0)/tdy) + 1;
+    nty = Math.max(1,nty);
+    // Draw and label graph
+    graph.drawXaxis(1,'#000000', graph.xmin, graph.xmax, graph.ymin);
+    graph.drawXgrid(1,'#00FF00', graph.xmin, graph.xmax, tdx);
+    graph.drawYaxis(1,'#000000', graph.ymin, graph.ymax, graph.xmin);
+    graph.drawYgrid(1,'#00FF00', graph.ymin, graph.ymax, tdy);
+    graph.labelXaxis('#000000', ntx,  10, graph.xmin, graph.xmax, graph.ymin);
+    graph.labelYaxis('#000000', nty, -10, graph.ymin, graph.ymax, graph.xmin);
+    graph.placeText('#000000',"Dynamic Response",210,0,0.0,'center','top');
+    graph.placeText('#000000',"Time (sec)",210,300,0.0,'center','bottom');
+    graph.placeText('#000000',"Mass Displacement (x) and Velocity (v)",8,140,-90.0,'center','middle');
+    // draw legend for plots of state variable solutions.
+    w = graph.wmax - 2;
+    h = graph.hmin + 2;
+    graph.placeText(depvarColor(1),depvarLabel(1),w,h,   0.0,'end','top');
+    graph.placeText(depvarColor(2),depvarLabel(2),w,h+10,0.0,'end','top');
+};
+
+function initCanvas2() {
+    ctx    = canvas2.getContext('2d');
+    width  = canvas2.width;
+    height = canvas2.height;
+    graph = new canvas_graph(canvas2,ctx,0,0,width,height);
+    if ( graph != null ) {
+        // draw graph
+        drawGraph();
+        // plot steady-state and exact solution if it exists
+        sys_msd.plotExactSolution(graph, 0.0, tmax, 0.1);
+    };
+    // start drawing dynamic response curve 
+    drawCanvas2();
+};
+
+function displaySysCharacteristics() {
+    var text,wn,z,x,h,w;
+    text  = "&nbsp;&nbsp;&nbsp;"
+    text += "x0  = " + sys_msd.S[1] + ", ";
+    text += "v0  = " + sys_msd.S[2] + ", ";
+    text += "g   = " + sys_msd.g    + ", ";
+    text += "m   = " + sys_msd.m    + ", ";
+    text += "k   = " + sys_msd.k    + ", ";
+    text += "c   = " + sys_msd.c    + ", ";
+    text += "steady-state x = " + Math.round(sys_msd.xSS*10000.0)/10000.0 + ",";
+    document.getElementById('mass-spring-damper').innerHTML=text;
+    wn    = Math.round(sys_msd.omegan*10000.0)/10000.0;
+    z     = Math.round(sys_msd.zeta*10000.0)/10000.0;
+    text  = "&nbsp;&nbsp;&nbsp;";
+    text += sys_msd.desc_omegan + " = " + wn + " rad/sec, ";
+    text += sys_msd.desc_zeta + " = " + z;
+    document.getElementById('omegan-zeta').innerHTML=text;
+    if ( sys_msd.c == 0.0 ) {
+        text = "Dynamic Response for Undamped Case";
+    } else if ( z < 1.0 ) {
+        text = "Dynamic Response for Underdamped Case"; 
+    } else if ( z > 1.0 ) {
+        text = "Dynamic Response for Overdamped Case";
+    } else {
+        text = "Dynamic Response for Critically Damped Case";
+    };
+    if ( graph != null ) {
+        graph.ctx.clearRect(10,0,graph.width-10,14);
+        graph.ctx.save();
+        graph.setFont('#0000FF','bold',12,'sans-serif');
+        graph.placeText('#0000FF',text,150,0,0.0,'center','top');
+        graph.ctx.restore();
+    };
+};
+
+function init() {
+    // initialize the system state
+    alert("Dynamic system simulation initialization.");
+    sys_msd.init_S(39.24,25.0);
+    // Display system characteristics
+    displaySysCharacteristics();
+    // intialize the animation canvas and plotting canvas
+    if ( supports_canvas() ) {
+    	  // canvas supported
+        canvas1 = document.createElement('canvas');
+        canvas1.setAttribute('name', 'canvas1');
+        canvas1.setAttribute('width', '400px');
+        canvas1.setAttribute('height','300px');
+        canvas1.setAttribute('style','border: 0px solid #000000');
+        div = document.getElementById('div-canvas1');
+        div.className = "canvas_graph";
+        div.appendChild(canvas1);
+        initCanvas1();
+        canvas2 = document.createElement('canvas');
+        canvas2.setAttribute('name', 'canvas2');
+        canvas2.setAttribute('width', '400px');
+        canvas2.setAttribute('height','300px');
+        canvas2.setAttribute('style','border: 0px solid #000000');
+        canvas2.onmousedown = function() { return initExample(); };
+        div = document.getElementById('div-canvas2');
+        div.className = "canvas_graph";
+        div.appendChild(canvas2);
+        initCanvas2();
+    } else {
+        div = document.getElementById('div-canvas1');
+        div.className = "canvas_image";
+        div = document.getElementById('div-canvas2');
+        div.className = "canvas_image";
+    };
+};
+
+function stateText(prefix,S) {
+    t      = Math.round(S[0]*100.0)/100.0;
+    t_text = "&nbsp;&nbsp;t= " + t;
+    x      = Math.round(S[1]*100.0)/100.0;
+    x_text = "&nbsp;&nbsp;x= " + x;
+    v      = Math.round(S[2]*100.0)/100.0;
+    v_text = "&nbsp;&nbsp;v= " + v;
+    text   = prefix + t_text + x_text + v_text;
+    return text;
+};
+
+function dynamicSim() {
+   if (plot_done == 1) {
+      if ( intrvlSim != "" ) {
+          clearInterval(intrvlSim);
+          intrvlSim = "";
+      };
+      return;
+   };
+   if ( sys_msd.S[0] < tmax ) {
+      sys_msd.S = rk4.step(sys_msd.S, sys_msd.dotS);
+   } else {
+      // print final state
+      document.getElementById('rk4final').innerHTML=stateText("Final state&nbsp;:",sys_msd.S);
+      plot_done = 1;
+   };
+};
+
+function initExample() {
+    if (plot_done == 1) {
+        return;
+    };
+    // print initial state
+    document.getElementById('rk4first').innerHTML=stateText("Initial state:",sys_msd.S);
+    // set refresh intervals for animation and plotting
+    if ( intrvl1 == "" ) {
+        intrvl1 = setInterval(drawCanvas1,250);
+    };
+    if ( intrvl2 == "" ) {
+        intrvl2 = setInterval(drawCanvas2,100);
+    };
+    // solve for dynamic response
+    dynamicSim();
+    if ( intrvlSim == "" ) {
+        intrvlSim = setInterval(dynamicSim,1);
+    };
+};
+</script>
+</head>
+<body style="margin: 0px; width: 804px" onLoad="init();">
+<div id="div-canvas1" class="canvas" style="float: left; width: 400px; height: 330px;">
+<b>&nbsp;&nbsp;Ideal Mass-Spring-Damper System<br><br></b>
+</div>
+<div id="div-canvas2" class="canvas" style="float: left; width: 400px; height: 330px;">
+<b>&nbsp;&nbsp;Mass Displacement and Velocity vs Time <br><br></b>
+</div>
+<div style="width: 804px;">
+<p>
+If this page is displayed with an HTML5 capable and JavaScript enabled browser 
+such as Firefox <span style="white-space: nowrap;">(v 3.6+)</span> or Opera 
+<span style="white-space: nowrap;">(v 10.6+)</span>, then click in the right 
+hand box above to display a plot depicting the dynamic response of the ideal 
+mass-spring-damper system shown in the left hand box.
+</p>
+Runge-Kutta 4th order integration method applied to an ideal mass-spring-damper 
+system defined by the 2nd order linear differential equation,&nbsp; 
+a = g - (k/m)*x - (c/m)*v&nbsp;&nbsp;where:<br><br>
+<div id="mass-spring-damper"></div>
+<div id="omegan-zeta"></div>
+<br>
+<div id="rk4first"></div>
+<div id="rk4final"></div>
+</div>
+</body>
+</html>
