@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>jsRK4 Example 3</title>
+<style type="text/css">
+body
+{
+    font-size: 20px;
+    font-weight: bold;
+    font-family: "Times New Roman", Times, serif;
+}
+#div-canvas
+{
+    background-image: url(html5.gif);
+	border: 1px solid #000000;
+}
+#div-canvas.image
+{
+	width: 300px;
+  	height: 300px;
+    background-image: url(html5.gif);
+    background-color: #FFFFFF;
+  	border: 1px solid #000000;
+    font-size: 10px;
+    font-family: sans-serif;
+}
+#div-canvas.graph
+{
+	width: 300px;
+  	height: 300px;
+    background-image: none;
+    background-color: #FFFFFF;
+  	border: 0px solid #000000;
+    font-size: 10px;
+    font-family: sans-serif;
+}
+#canvas-graph
+{
+    background-image: none;
+    background-color: #FFFFFF;
+  	border: 1px solid #000000;
+    font-size: 10px;
+    font-family: sans-serif;
+}
+#div-debug
+{
+    background-color: white;
+    background-image: none;
+  	border: 0px solid #000000;
+    font-size: 12px;
+    font-family: sans-serif;
+}
+</style>
+<script type="text/javascript" src="rk4solver.js"></script>
+<script type="text/javascript" src="system_mass_spring_damper.js"></script>
+<script type="text/javascript" src="canvas_graph.js"></script>
+<script type="text/javascript">
+
+// Ideal mass-spring-damper system dynamic simulation
+
+var inpM    = null;
+var inpK    = null;
+var inpC    = null;
+var inpLen  = null;
+var inpG    = null;
+var inpX0   = null;
+var inpV0   = null;
+var inpTmax = null;
+var inpTinc = null;
+
+var m_default     = 2.0;
+var k_default     = 1.0;
+var c_default     = 0.5;
+var len_default   = 100.0;
+var gflag_default = true;
+var x0_default    = 50.0;
+var v0_default    = 10.0;
+var tmax_default  = 50.0;
+var tinc_default  = 1.0/100.0;
+
+var sys_msd       = null;
+var rk4           = null;
+var canvas        = null;
+var ctx           = null;
+var graph         = null;
+var dsim_interval = "";
+var plot_interval = "";
+
+var dsim_tmax     = tmax_default;
+var dsim_tinc     = tinc_default;
+var dsim_state    = 0;  // (0=stopped, 1=started, 2=completed);
+var text_pause    = "";
+var text_paused   = "";
+var text_resume   = "";
+
+var flag_debug    = false;
+var text_debug    = "";
+
+function supports_canvas() {
+    return !!document.createElement('canvas').getContext;
+};
+
+function debugPrint(msg) {
+    if ( flag_debug == false ) {
+       return;
+    };
+    if ( text_debug == "" ) {
+       text_debug = "DEBUG:<br>";
+    };
+    text_debug += arguments.callee.caller.name + ": " + msg + "<br>";
+    document.getElementById('div-debug').innerHTML=text_debug;
+}
+
+function depvarLabel(i) {
+    // returns ith state vector element plot label
+    return (i == 1) ? "displacement (x) " : "velocity (v) "; 
+};
+function depvarColor(i) {
+    // returns ith state vector element plot color
+    return (i == 1) ? '#0000FF' : '#FF0000'; 
+};
+
+function drawGraph() {
+    if ( graph == null ) {
+        return;
+    }
+    var h, w, x, tdx, tdy, ntx, nty;
+    // Clear graph canvas
+    graph.ctx.clearRect(0, 0, graph.width, graph.height);
+    // Set graph canvas and data limits
+    graph.setWHLimits(40, 280,  20, 260);
+    graph.setXYLimits(0.0, dsim_tmax, -75.0,  75.0);
+    // Set x-axis tick mark intervals and number
+    if ( graph.xmax > 40.0 ) {
+       tdx = 10.0;
+    } else if ( graph.xmax > 10.0 ) {
+       tdx = 5.0;
+    } else {
+       tdx = 1.0;
+    };
+    ntx = Math.floor((graph.xmax - graph.xmin + tdx/2.0)/tdx) + 1;
+    ntx = Math.max(1,ntx);
+    // Set y-axis tick mark intervals and number
+    tdy = 25.0;
+    nty = Math.floor((graph.ymax - graph.ymin + tdy/2.0)/tdy) + 1;
+    nty = Math.max(1,nty);
+    // Draw and label graph
+    graph.drawXaxis(1,'#000000', graph.xmin, graph.xmax, graph.ymin);
+    graph.drawXgrid(1,'#00FF00', graph.xmin, graph.xmax, tdx);
+    graph.drawYaxis(1,'#000000', graph.ymin, graph.ymax, graph.xmin);
+    graph.drawYgrid(1,'#00FF00', graph.ymin, graph.ymax, tdy);
+    graph.labelXaxis('#000000', ntx,  10, graph.xmin, graph.xmax, graph.ymin);
+    graph.labelYaxis('#000000', nty, -10, graph.ymin, graph.ymax, graph.xmin);
+    graph.placeText('#000000',"Dynamic Response",160,0,0.0,'center','top');
+    graph.placeText('#000000',"Time (sec)",160,300,0.0,'center','bottom');
+    graph.placeText('#000000',"Mass Displacement (x) and Velocity (v)",8,140,-90.0,'center','middle');
+    // draw legend for plots of state variable solutions.
+    w = graph.wmax - 2;
+    h = graph.hmin + 2;
+    graph.placeText(depvarColor(1),depvarLabel(1),w,h,   0.0,'end','top');
+    graph.placeText(depvarColor(2),depvarLabel(2),w,h+10,0.0,'end','top');
+};
+
+function displaySysCharacteristics() {
+    var text,wn,z,x,h,w;
+    text  = "&nbsp;&nbsp;&nbsp;"
+    text += "x0  = " + sys_msd.S[1] + ", ";
+    text += "v0  = " + sys_msd.S[2] + ", ";
+    text += "g   = " + sys_msd.g    + ", ";
+    text += "m   = " + sys_msd.m    + ", ";
+    text += "k   = " + sys_msd.k    + ", ";
+    text += "c   = " + sys_msd.c    + ", ";
+    text += "steady-state x = " + Math.round(sys_msd.xSS*10000.0)/10000.0 + ",";
+    document.getElementById('mass-spring-damper').innerHTML=text;
+    wn    = Math.round(sys_msd.omegan*10000.0)/10000.0;
+    z     = Math.round(sys_msd.zeta*10000.0)/10000.0;
+    text  = "&nbsp;&nbsp;&nbsp;";
+    text += sys_msd.desc_omegan + " = " + wn + " rad/sec, ";
+    text += sys_msd.desc_zeta + " = " + z;
+    document.getElementById('omegan-zeta').innerHTML=text;
+    if ( sys_msd.c == 0.0 ) {
+        text = "Dynamic Response for Undamped Case";
+    } else if ( z < 1.0 ) {
+        text = "Dynamic Response for Underdamped Case"; 
+    } else if ( z > 1.0 ) {
+        text = "Dynamic Response for Overdamped Case";
+    } else {
+        text = "Dynamic Response for Critically Damped Case";
+    };
+    if ( graph != null ) {
+        graph.ctx.clearRect(10,0,graph.width-10,14);
+        graph.ctx.save();
+        graph.setFont('#0000FF','bold',12,'sans-serif');
+        graph.placeText('#0000FF',text,150,0,0.0,'center','top');
+        graph.ctx.restore();
+    };
+};
+
+function initExample3(aWidth, aHeight) {
+    
+    // Get document elements for system characterization inputs
+    inpG    = document.getElementById('inpG');
+    inpM    = document.getElementById('inpM');
+    inpK    = document.getElementById('inpK');
+    inpC    = document.getElementById('inpC');
+    inpLen  = document.getElementById('inpLen');
+    inpX0   = document.getElementById('inpX0');
+    inpV0   = document.getElementById('inpV0');
+    inpTmax = document.getElementById('inpTmax');
+    inpTinc = document.getElementById('inpTinc');
+    
+    // Instantiate mass-spring-damper system and RK4 solver objects
+    if ( sys_msd == null ) {
+        alert("Dynamic system simulation initialization.");
+        debugPrint("Dynamic system simulation initialization.");
+        // set input defaults
+        setInputDefaults();
+        // instantiate the dynamic system model and solver
+        m       = m_default;
+        k       = k_default;
+        c       = c_default;
+        len     = len_default;
+        gflag   = gflag_default;
+        sys_msd = new system_mass_spring_damper(m,k,c,len,gflag);
+        rk4     = new rk4solver(dsim_tinc,sys_msd.n);
+        // initialize system states to default values for x0 and v0
+        sys_msd.init_S(x0_default,v0_default);
+    };
+    
+    // Prepare canvas for plotting
+    if ( supports_canvas() ) {
+    	  // canvas supported
+        canvas = document.createElement('canvas');
+        canvas.setAttribute('name', 'canvas-graph');
+        canvas.setAttribute('width', '300px');
+        canvas.setAttribute('height','300px');
+        div = document.getElementById('div-canvas');
+        div.className = "graph";
+        div.appendChild(canvas);
+        ctx   = canvas.getContext('2d'); 
+        graph = new canvas_graph(canvas,ctx,0,0,aWidth,aHeight);
+        // draw graph
+        drawGraph();
+    } else {
+        div = document.getElementById('div-canvas');
+        div.className = "image";
+    };
+    
+    // Display system characteristics
+    displaySysCharacteristics();
+};
+
+function drawStates(ctx,S,wloc,hloc,wlen,hlen) {
+    ctx.save();
+    ctx.textBaseline = 'top';
+    ctx.textAlign    = 'start';
+    ctx.clearRect(wloc, hloc, wlen, hlen);
+    ctx.fillStyle="#000000";
+    ctx.fillText("t = " + Math.round(S[0]*100)/100.0, wloc, hloc);
+    ctx.fillStyle=depvarColor(1);
+    ctx.fillText("x = " + Math.round(S[1]*100)/100.0, wloc, hloc+10);
+    ctx.fillStyle=depvarColor(2);
+    ctx.fillText("v = " + Math.round(S[2]*100)/100.0, wloc, hloc+20);
+    ctx.restore();
+};
+
+function plotDynamicResponse() {
+    if ( dsim_state == 2 ) {
+        if ( plot_interval != "" ) {
+           clearInterval(plot_interval);
+           plot_interval = "";
+        };
+        return;
+    };
+    if ( graph != null ) {
+        t = sys_msd.S[0];
+        x = sys_msd.S[1];
+        graph.drawXYdot(0,depvarColor(1),depvarColor(1), t, x, 1);
+        v = sys_msd.S[2];
+        graph.drawXYdot(0,depvarColor(2),depvarColor(2), t, v, 1);
+        // draw current state values
+        wloc = graph.wmax - 60;
+        hloc = graph.hmax - 50;
+        drawStates(graph.ctx,sys_msd.S,wloc,hloc,56,30);
+    };
+};
+
+function doDynamicSim() {
+    if ( dsim_state == 2 ) {
+        if ( dsim_interval != "" ) {
+           clearInterval(dsim_interval);
+           dsim_interval = "";
+        };
+        return;
+    };
+    if ( sys_msd.S[0] < dsim_tmax ) {
+        // Solve for the dynamic response at each time step
+        sys_msd.S = rk4.step(sys_msd.S, sys_msd.dotS);
+    } else {
+        dsim_state = 2;
+        // Print final system state
+        t    = Math.round(sys_msd.S[0]*100.0)/100.0;
+        x    = Math.round(sys_msd.S[1]*100.0)/100.0;
+        v    = Math.round(sys_msd.S[2]*100.0)/100.0;
+        text = "Final state: t= " + t + " x= " + x + " v= " + v;
+        document.getElementById('rk4final').innerHTML=text;
+    };
+};
+
+function startDynamicSim() {
+    if ( dsim_state == 1 ) {
+        if ( text_paused != "" ) {
+            // simulation running, but paused
+            stopDynamicSim()
+            text_paused = "";
+        };
+    } else {
+        if ( dsim_state == 2 ) {
+            // simulation stopped
+            dsim_state  = 0;
+            text_paused = "";
+            text_resume = "";
+            drawGraph();
+            document.getElementById('rk4first').innerHTML="";
+            document.getElementById('rk4pause').innerHTML="";
+            document.getElementById('rk4final').innerHTML="";
+        };
+        dsim_state = 1;
+        // Initialize system state
+        sys_msd.init_S(sys_msd.x0,sys_msd.v0);
+        // Print initial system state
+        var t,x,v,text;
+        t    = Math.round(sys_msd.S[0]*100.0)/100.0;
+        x    = Math.round(sys_msd.S[1]*100.0)/100.0;
+        v    = Math.round(sys_msd.S[2]*100.0)/100.0;
+        text = "Initial state: t= " + t + " x= " + x + " v= " + v;
+        document.getElementById('rk4first').innerHTML=text;
+        if ( graph != null ) {
+            // plot steady-state and exact solution if it exists
+            sys_msd.plotExactSolution(graph, 0.0, dsim_tmax, 0.1);
+        };
+    };
+    // Start dynamic response plotting
+    if ( plot_interval == "" ) {
+        plotDynamicResponse();
+        plot_interval = setInterval(plotDynamicResponse,100);
+    };
+    // Start dynamic simulation
+    if ( dsim_interval == "" ) {
+        doDynamicSim();
+        dsim_interval = setInterval(doDynamicSim,1);
+    };
+};
+
+function stopDynamicSim() {
+    if ( dsim_interval != "" ) {
+        clearInterval(dsim_interval);
+        dsim_interval = "";
+    };
+    if ( plot_interval != "" ) {
+        clearInterval(plot_interval);
+        plot_interval = "";
+    };
+    // Print pause system state
+    if ( dsim_state == 1 ) {
+        t    = Math.round(sys_msd.S[0]*100.0)/100.0;
+        x    = Math.round(sys_msd.S[1]*100.0)/100.0;
+        v    = Math.round(sys_msd.S[2]*100.0)/100.0;
+        text = "t= " + t + " x= " + x + " v= " + v;
+        if ( text_paused == "" ) {
+            text_paused = text;
+            if ( text_resume == "" ) {
+                text_pause  = "Pause state: " + text_paused;
+                text_resume = "saved state: " + text_paused;
+            } else { 
+                text_pause  = text_resume + "<br>" + "Pause state: " + text_paused;
+                text_resume += "<br>" + "saved state: " + text_paused;
+            };
+            document.getElementById('rk4pause').innerHTML=text_pause;
+        } else {
+            document.getElementById('rk4pause').innerHTML=text_resume;
+        };
+    };
+};
+
+function restartDynamicSim() {
+    if ( dsim_interval != "" ) {
+        stopDynamicSim();
+    };
+    dsim_state  = 0;
+    text_paused = "";
+    text_resume = "";
+    putInputValues();
+    drawGraph();
+    document.getElementById('rk4first').innerHTML="";
+    document.getElementById('rk4pause').innerHTML="";
+    document.getElementById('rk4final').innerHTML="";
+};
+
+function putInputValues() {
+    if ( dsim_state != 1 ) {
+        debugPrint("Detected change to an input value.");
+        m = parseFloat(inpM.value);
+        setInpM(m);
+        k = parseFloat(inpK.value);
+        setInpK(k);
+        c = parseFloat(inpC.value);
+        setInpC(c);
+        len = parseFloat(inpLen.value);
+        setInpLen(len);
+        g = inpG.checked;
+        setInpG(g);
+        x0 = parseFloat(inpX0.value);
+        v0 = parseFloat(inpV0.value);
+        setInpX0V0(x0,v0,len);
+        tmax = parseFloat(inpTmax.value);
+        setInpTmax(tmax);
+        tinc = parseFloat(inpTinc.value);
+        setInpTinc(tinc);
+        displaySysCharacteristics();
+    };
+};
+
+function setInputDefaults () {
+    inpM.setAttribute('value', m_default.toString());
+    inpK.setAttribute('value', k_default.toString());
+    inpC.setAttribute('value', c_default.toString());
+    inpLen.setAttribute('value', len_default.toString());
+    inpG.setAttribute('checked', gflag_default ? "1" : "0");
+    inpX0.setAttribute('value', x0_default.toString());
+    inpV0.setAttribute('value', v0_default.toString());
+    inpTmax.setAttribute('value', tmax_default.toString());
+    inpTinc.setAttribute('value', tinc_default.toString());
+    return 0;
+};
+
+function setInpM(m) {
+    sys_msd.set_m(Math.min(Math.max(0.1,m),50.0));
+};
+
+function setInpK(k) {
+    if ( k > 0.0 ) {
+        sys_msd.set_k(k);
+    };
+};
+
+function setInpC(c) {
+    if ( c >= 0.0 ) {
+        sys_msd.set_c(c);
+    };
+};
+
+function setInpLen(len) {
+    sys_msd.set_len(Math.min(Math.max(50.0,len),150.0));
+};
+
+function setInpG(g) {
+    sys_msd.set_g(g);
+};
+
+function setInpX0V0(x0,v0,len) {
+    if ( ((-0.5 <= x0/len) && (x0/len <= 1.5))
+        && ((-50.0 <= v0) && (v0 <= 50.0)) ) {
+        sys_msd.init_S(x0,v0);
+    };
+};
+
+function setInpTmax(tmax) {
+    if ( (1.0 < tmax) && (tmax <= 100.0) ) {
+        if ( tmax >= 10.0 ) {
+            dsim_tmax = Math.round(tmax/10.0)*10.0;
+        } else {
+            dsim_tmax = Math.round(tmax*10.0)/10.0;
+        };
+    };
+};
+
+function setInpTinc(tinc) {
+    if ( (0.0005 <= tinc) && (tinc <= 0.1) ) {
+        dsim_tinc = tinc;
+        rk4.init(dsim_tinc,sys_msd.n);
+    };
+};
+</script>
+</head>
+<body onLoad="initExample3(300, 300)" style="margin: 0px;">
+<div id="page-top-left" style="float: left; width: 310px; height: 330px;">
+        <div id="div-canvas" style="width: 300px; height: 300px; border: 1px solid #000000;"></div>
+</div>
+<div id="page-top-right" style="height: 330px;">
+<p>
+A graph, for plotting the dynamic response of an ideal mass-spring-damper system, should appear in the canvas area to the left if this page is displayed with an HTML5 capable and JavaScript enabled browser such as Firefox <nobr>(v 3.6+)</nobr> or Opera <nobr>(v 10.6+)</nobr>. 
+</p>
+Runge-Kutta 4th order integration method applied to an ideal mass-spring-damper system defined by the 2nd order linear differential equation<br>&nbsp;&nbsp; a = g - (k/m)*x - (c/m)*v<br>with the following initial conditions and specified spring properties:<br>
+<div id="mass-spring-damper"></div>
+<div id="omegan-zeta"></div>
+<br>
+    <div id="user-input1">
+        <input type="button" value="Start/Resume"      onclick="startDynamicSim();">
+        <input type="button" value="Stop/Pause"        onclick="stopDynamicSim();">
+        <input type="button" value="Reset for Restart" onclick="restartDynamicSim();">
+        &nbsp;&nbsp;Simulation Control<br>
+    </div>
+</div>
+</div>
+<div id="page-bottom" style="border: 2px solid #000000; height: 260px;">
+        <div id="user-input2" style="float: left; border: 1px solid #000000; width: 400px; height: 260px;">
+            <form id="form1" onreset="setInputDefaults();">
+                <input type="reset" name="reset">&nbsp;&nbsp;Click to set following to defaults.<br>
+                &nbsp;&nbsp;&nbsp;&nbsp;<input id="inpG" type="checkbox" name="g"  onclick="putInputValues();">&nbsp;&nbsp;Gravitational field enabled<br>
+                <input id="inpM"    type="text"  name="m"    size="5" onchange="putInputValues();">&nbsp;&nbsp;Mass (m)<br>
+                <input id="inpK"    type="text"  name="k"    size="5" onchange="putInputValues();">&nbsp;&nbsp;Spring constant (k>0) <br>
+                <input id="inpC"    type="text"  name="c"    size="5" onchange="putInputValues();">&nbsp;&nbsp;Damping coefficient (c)<br>
+                <input id="inpLen"  type="text"  name="len"  size="5" onchange="putInputValues();">&nbsp;&nbsp;Unstressed spring length (len)<br>
+                <input id="inpX0"   type="text"  name="x0"   size="5" onchange="putInputValues();">&nbsp;&nbsp;Initial mass displacement (x0)<br>
+                <input id="inpV0"   type="text"  name="v0"   size="5" onchange="putInputValues();">&nbsp;&nbsp;Initial mass velocity (v0)<br>
+                <input id="inpTmax" type="text"  name="tmax" size="5" onchange="putInputValues();">&nbsp;&nbsp;Simulation time maximum (tmax)<br>
+                <input id="inpTinc" type="text"  name="tinc" size="5" onchange="putInputValues();">&nbsp;&nbsp;Integration time increment (tinc)<br>
+            </form>
+        </div>
+        <div id="dsim-output" style="float: left; margin-left: 5px; border: 0px solid #000000; width: 400px; height: 260px;">
+            <div id="rk4first"></div>
+            <div id="rk4pause"></div>
+            <div id="rk4final"></div>
+        </div>
+</div>
+<div id="div-debug" style="margin-left: 5px;"></div>
+</body>
+</html>
