@@ -58,8 +58,8 @@
           <td><a href="https://gedeschaines.github.io/jsRK4/example3.html" target="_blank">
             <span style="white-space: nowrap;">Example 3</span></a></td>
           <td>Dynamic response plot, mass-spring-damper animation, simulation start/resume, 
-          stop/pause and reset buttons, entry fields for system characterizing parameters, 
-          and uses object-oriented JavaScript code.</td>
+          stop/pause and reset buttons, input fields for system characterizing parameters and 
+           integration time increment values; uses object-oriented JavaScript code.</td>
         </tr>
         <tr>
           <td><a href="https://gedeschaines.github.io/jsRK4/example4.html" target="_blank">
@@ -72,7 +72,7 @@
     Refactoring of JavaScript code embedded in Examples 1 and 2 into object-oriented components contained
     in three class files -- rk4solver.js, system_mass_spring_damper.js and canvas_graph.js -- enhances the 
     modularity of the simulation code. This improves maintainability by reducing amount of duplicative code 
-    and promotes resusabilty through separation of functionality. The rk4solver class is for applying RK4 
+    and promotes resusability through separation of functionality. The rk4solver class is for applying RK4 
     integration method on a given system of first order differential equations. The system_mass_spring_damper
     class characterizes the physical system to be simulated, and the canvas_graph class is for graphing data
     in a XY plot on the given canvas.
