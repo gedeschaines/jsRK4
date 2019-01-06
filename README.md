@@ -1,8 +1,10 @@
 # jsRK4
-
+___
 A JavaScript/HTML5 implementation of explicit 4th order Runge-Kutta method to simulate mass-spring-damper system dynamics.
 
-The four example HTML5 files presented in the [./docs](./docs) folder utilize an explicit fourth order Runge-Kutta (RK4) integration method applied to an ideal vertical mass-spring-damper system defined by the 2nd order linear differential equation a = g - (k/m)*x - (c/m)*v.
+The four example HTML5 files presented in the [./docs](./docs) folder utilize an explicit fourth order Runge-Kutta (RK4) integration method applied to an ideal vertical mass-spring-damper system defined by the following second order linear differential equation.
+
+     a = g - (k/m)*x - (c/m)*v                                          (1)
 
 Each example may be run by clicking on it's corresponding link in this [web page](https://gedeschaines.github.io/jsRK4/).
 
@@ -12,7 +14,7 @@ With the growth in HTML5 support by most browser vendors by 2010, developing int
 
 Having developed numerous 2D and 3D graphics applications to generate runtime and post-processing display of simulation output, ranging from battle field dynamics to 6-DOF missile simulations, on expensive graphics display hardware using proprietary software libraries, the opportunity to use freely and readily available JavaScript enabled and HTML5 capable web browsers as a Graphical User Interface (GUI) for modeling and simulations could not be avoided. 
 
-Since most physics based simulations involve numerical integration of differential equations, a crucial simulation component would be an integration routine. The explicit [RK4](http://web.mit.edu/10.001/Web/Course_Notes/Differential_Equations_Notes/node5.html) method is easy to implement and is generally well behaved for simple non-stiff problems such as a mass-spring-damper system with reasonable values for the system's characteristics -- gravitational acceleration (g), mass (m), spring constant (k), damping coefficient (c), initial displacement (x0) and velocity (v0). 
+Since most physics based simulations involve numerical integration of differential equations, a crucial simulation component would be an integration routine. The explicit [RK4](http://web.mit.edu/10.001/Web/Course_Notes/Differential_Equations_Notes/node5.html) method is easy to implement and is generally well behaved for simple non-stiff problems such as a mass-spring-damper system with reasonable values for the system's characteristics in equation (1) above: gravitational acceleration (g), mass (m), spring constant (k), damping coefficient (c), initial displacement (x0) and velocity (v0). 
  
 ## Attribution
 
