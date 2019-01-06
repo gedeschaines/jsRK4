@@ -31,10 +31,10 @@
       }
     </style>
   </head>
-  <body id="text">
-    <p>
+  <body>
+    <p id="text">
     Clicking the jsRK4 example links in following table will present an HTML5 compatible web page displaying
-    the dynamic response of a vertical mass-spring-damper system. The disguishing features of each example 
+    the dynamic response of an ideal vertical mass-spring-damper system. The disguishing features of each example 
     involve graphics displayed, complexity of user interface and structure of associated JavasScript code as
     denoted.
     </p>
@@ -68,5 +68,14 @@
         </tr>
       </table>
     </div>
+    <p id="text">
+    Refactoring of JavaScript code embedded in Examples 1 and 2 into object-oriented components contained
+    in three class files -- rk4solver.js, system_mass_spring_damper.js and canvas_graph.js -- enhances the 
+    modularity of the simulation code. This improves maintainability by reducing amount of duplicative code 
+    and promotes resusabilty through separation of functionality. The rk4solver class is for applying RK4 
+    integration method on a given system of first order differential equations. The system_mass_spring_damper
+    class characterizes the physical system to be simulated, and the canvas_graph class is for graphing data
+    in a XY plot on the given canvas.
+    </p>
   </body>
 </html>
