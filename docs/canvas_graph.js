@@ -2,7 +2,7 @@
 // FILE:  canvas_graph.js
 // DATE:  03 JUL 2012
 // AUTH:  Gary E. Deschaines
-// LINK:  http://home.hiwaay.net/~gedesch/GED/gedwsapp/data/scripts/{FILE}
+// LINK:  https://github.com/gedeschaines/jsRK4/blob/master/docs/{FILE}
 
 function canvas_graph(canvas,ctx,wmin,hmin,wmax,hmax) {
 
