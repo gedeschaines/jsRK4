@@ -2,7 +2,7 @@
 // FILE:  system_mass_spring_damper.js
 // DATE:  03 JUL 2012
 // AUTH:  Gary E. Deschaines
-// LINK:  http://home.hiwaay.net/~gedesch/GED/gedwsapp/data/scripts/{FILE}
+// LINK:  https://github.com/gedeschaines/jsRK4/blob/master/docs/{FILE}
 
 // The force equation for an ideal mass-spring-damper system
 // is defined as F = Fg - Fd - Fs.  The force Fg is due to
@@ -193,7 +193,7 @@ function system_mass_spring_damper(im,ik,ic,ilen,gflag) {
     setExactSolution(solveFunc);
     
     // If a closed form solution exists for the mass-spring-damper
-    // system characterized by it's properties, then the following
+    // system characterized by its properties, then the following
     // routine will plot the exact solution on the given graph.
     
     this.plotExactSolution = function(graph, tMin, tMax, tDel) {
@@ -265,7 +265,7 @@ function sys_msd_SolveFunctions(sys_msd) {
     var wn   = sys_msd.omegan;  // undamped natural frequency
     var z    = sys_msd.zeta;    // damping ratio
     var xSS  = sys_msd.xSS;     // steady-state solution to x,
-                                 // (i.e., x when v=0 and a=0)
+                                // (i.e., x when v=0 and a=0)
     
     // Public properties
     
