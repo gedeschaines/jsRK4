@@ -18,4 +18,4 @@ Since most physics based simulations involve numerical integration of differenti
  
 ## Attribution
 
-The inspiration for a JavaScript implementation of the RK4 method to simulate a mass-spring-damper system came from this [Doswa post](http://doswa.com/2009/04/21/improved-rk4-implementation.html) presenting a Python implementation of RK4.
+The inspiration for a JavaScript implementation of the RK4 method to simulate a mass-spring-damper system came from this [Doswa post](https://web.archive.org/web/20130829202216/http://doswa.com/2009/04/21/improved-rk4-implementation.html) presenting a Python implementation of RK4.
