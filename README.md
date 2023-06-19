@@ -4,7 +4,7 @@ A JavaScript/HTML5 implementation of explicit 4th order Runge-Kutta method to si
 
 The four example HTML5 files presented in the [./docs](./docs) folder utilize an explicit fourth order Runge-Kutta (RK4) integration method applied to an ideal vertical mass-spring-damper system defined by the following second order linear differential equation.
 
-     a = g - (k/m)*x - (c/m)*v                                                                  (1)
+     a = g - (k/m)*x - (c/m)*v                                                      (1)
 
 Each example may be run by clicking on it's corresponding link in this [web page](https://gedeschaines.github.io/jsRK4/).
 The following image depicts completed jsRK4 Example 3 run in FireFox browser.
